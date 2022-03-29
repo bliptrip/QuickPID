@@ -4,12 +4,6 @@
    Based on the Arduino PID_v1 Library. Licensed under the MIT License.
  **********************************************************************************/
 
-#if ARDUINO >= 100
-#include "Arduino.h"
-#else
-#include "WProgram.h"
-#endif
-
 #include "QuickPID.h"
 
 /* Constructor ********************************************************************
@@ -21,19 +15,23 @@ QuickPID::QuickPID(float* Input, float* Output, float* Setpoint,
                    pMode pMode = pMode::pOnError,
                    dMode dMode = dMode::dOnMeas,
                    iAwMode iAwMode = iAwMode::iAwCondition,
-                   Action Action = Action::direct) {
+                   Action Action = Action::direct,
+                   tGetTimeMicros getMicros = NULL) {
 
   myOutput = Output;
   myInput = Input;
   mySetpoint = Setpoint;
   mode = Control::manual;
+  _getMicros = getMicros;
 
   QuickPID::SetOutputLimits(0, 255);  // same default as Arduino PWM limit
   sampleTimeUs = 100000;              // 0.1 sec default
   QuickPID::SetControllerDirection(Action);
   QuickPID::SetTunings(Kp, Ki, Kd, pMode, dMode, iAwMode);
 
-  lastTime = micros() - sampleTimeUs;
+  if( _getMicros != NULL ) {
+    lastTime = _getMicros() - sampleTimeUs;
+  }
 }
 
 /* Constructor *********************************************************************
@@ -65,9 +63,13 @@ QuickPID::QuickPID(float* Input, float* Output, float* Setpoint)
    when the output is computed, false when nothing has been done.
  **********************************************************************************/
 bool QuickPID::Compute() {
+  uint32_t now;
+  uint32_t timeChange = 0;
   if (mode == Control::manual) return false;
-  uint32_t now = micros();
-  uint32_t timeChange = (now - lastTime);
+  if ((mode == Control::automatic) && (_getMicros != NULL) ) {
+    now = _getMicros();
+    timeChange = (now - lastTime);
+  }
   if (mode == Control::timer || timeChange >= sampleTimeUs) {
 
     float input = *myInput;
@@ -97,14 +99,14 @@ bool QuickPID::Compute() {
       float iTermOut = (peTerm - pmTerm) + ki * (iTerm + error);
       if (iTermOut > outMax && dError > 0) aw = true;
       else if (iTermOut < outMin && dError < 0) aw = true;
-      if (aw && ki) iTerm = constrain(iTermOut, -outMax, outMax);
+      if (aw && ki) iTerm = CONSTRAIN(iTermOut, -outMax, outMax);
     }
 
     // by default, compute output as per PID_v1
     outputSum += iTerm;                                                 // include integral amount
     if (iawmode == iAwMode::iAwOff) outputSum -= pmTerm;                // include pmTerm (no anti-windup)
-    else outputSum = constrain(outputSum - pmTerm, outMin, outMax);     // include pmTerm and clamp
-    *myOutput = constrain(outputSum + peTerm + dTerm, outMin, outMax);  // include dTerm, clamp and drive output
+    else outputSum = CONSTRAIN(outputSum - pmTerm, outMin, outMax);     // include pmTerm and clamp
+    *myOutput = CONSTRAIN(outputSum + peTerm + dTerm, outMin, outMax);  // include dTerm, clamp and drive output
 
     lastError = error;
     lastInput = input;
@@ -162,8 +164,8 @@ void QuickPID::SetOutputLimits(float Min, float Max) {
   outMax = Max;
 
   if (mode != Control::manual) {
-    *myOutput = constrain(*myOutput, outMin, outMax);
-    outputSum = constrain(outputSum, outMin, outMax);
+    *myOutput = CONSTRAIN(*myOutput, outMin, outMax);
+    outputSum = CONSTRAIN(outputSum, outMin, outMax);
   }
 }
 
@@ -172,11 +174,15 @@ void QuickPID::SetOutputLimits(float Min, float Max) {
   when the transition from manual to automatic or timer occurs, the
   controller is automatically initialized.
 ******************************************************************************/
-void QuickPID::SetMode(Control Mode) {
+void QuickPID::SetMode(Control Mode, tGetTimeMicros getMicros = NULL) {
   if (mode == Control::manual && Mode != Control::manual) { // just went from manual to automatic or timer
     QuickPID::Initialize();
   }
   mode = Mode;
+  _getMicros = NULL;
+  if( _getMicros != NULL ) {
+    lastTime = _getMicros() - sampleTimeUs;
+  }
 }
 
 /* Initialize()****************************************************************
@@ -186,7 +192,7 @@ void QuickPID::SetMode(Control Mode) {
 void QuickPID::Initialize() {
   outputSum = *myOutput;
   lastInput = *myInput;
-  outputSum = constrain(outputSum, outMin, outMax);
+  outputSum = CONSTRAIN(outputSum, outMin, outMax);
 }
 
 /* SetControllerDirection(.)**************************************************

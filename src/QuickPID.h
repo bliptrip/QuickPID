@@ -2,6 +2,12 @@
 #ifndef QuickPID_h
 #define QuickPID_h
 
+typedef unsigned long (*tGetTimeMicros)(void);
+
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define MAX(a,b) ((a) < (b) ? (b) : (a))
+#define CONSTRAIN(x,a,b) MIN(MAX((x),(a)),(b))
+
 class QuickPID {
 
   public:
@@ -26,7 +32,7 @@ class QuickPID {
     QuickPID(float *Input, float *Output, float *Setpoint);
 
     // Sets PID mode to manual (0), automatic (1) or timer (2).
-    void SetMode(Control Mode);
+    void SetMode(Control Mode, tGetTimeMicros* getTimeMicros);
 
     // Performs the PID calculation. It should be called every time loop() cycles ON/OFF and calculation frequency
     // can be set using SetMode and SetSampleTime respectively.
@@ -95,6 +101,8 @@ class QuickPID {
     float *myInput;     // Pointers to the Input, Output, and Setpoint variables. This creates a
     float *myOutput;    // hard link between the variables and the PID, freeing the user from having
     float *mySetpoint;  // to constantly tell us what these values are. With pointers we'll just know.
+
+    tGetTimeMicros _getMicros; // Function to use in 'automatic' mode that allows polling of time since wakeup in microseconds
 
     Control mode = Control::manual;
     Action action = Action::direct;
